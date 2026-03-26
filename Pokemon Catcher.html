@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>第一人稱抓寶遊戲</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 450px;
+            height: 100vh;
+            max-height: 800px;
+            position: relative;
+            background: linear-gradient(to bottom, #4CA1AF 0%, #C4E0E5 60%, #7CFC00 60%, #228B22 100%);
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        /* 遊戲訊息文字方塊 */
+        #dialog-box {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            background: rgba(255, 255, 255, 0.9);
+            border: 4px solid #333;
+            border-radius: 10px;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            z-index: 30;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: opacity 0.3s;
+        }
+
+        /* 寶可夢圖片 */
+        #pokemon-sprite {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: 180px;
+            z-index: 5;
+            filter: drop-shadow(0 10px 10px rgba(0,0,0,0.4));
+            transition: all 0.5s ease;
+        }
+
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translate(-50%, -50%); }
+            50% { transform: translate(-50%, -60%); }
+            100% { transform: translate(-50%, -50%); }
+        }
+
+        /* 被吸入精靈球的動畫 */
+        .absorbed {
+            filter: brightness(0) sepia(1) hue-rotate(310deg) saturate(5) !important;
+            transform: translate(-50%, -50%) scale(0) !important;
+            opacity: 0;
+        }
+
+        /* 精靈球設計 (純CSS繪製) */
+        #pokeball {
+            position: absolute;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%) scale(1);
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(to bottom, #FF0000 48%, #333 48%, #333 52%, #FFFFFF 52%);
+            border: 4px solid #333;
+            cursor: pointer;
+            z-index: 20;
+            box-shadow: 0 10px 15px rgba(0,0,0,0.4), inset -5px -5px 15px rgba(0,0,0,0.2);
+            transition: opacity 0.3s;
+        }
+
+        /* 精靈球中間的按鈕 */
+        #pokeball::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 24px;
+            height: 24px;
+            background: #FFF;
+            border: 3px solid #333;
+            border-radius: 50%;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
+        }
+
+        /* 丟球動畫 */
+        .throwing {
+            animation: throwAnim 1s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            pointer-events: none;
+        }
+
+        @keyframes throwAnim {
+            0% { bottom: 120px; transform: translateX(-50%) scale(1) rotate(0deg); }
+            50% { bottom: 55%; transform: translateX(-50%) scale(0.6) rotate(360deg); }
+            100% { bottom: 40%; transform: translateX(-50%) scale(0.3) rotate(720deg); }
+        }
+
+        /* 掉落到地上的動畫 */
+        .dropping {
+            animation: dropAnim 0.5s cubic-bezier(0.5, 0, 1, 1) forwards;
+        }
+
+        @keyframes dropAnim {
+            0% { bottom: 40%; transform: translateX(-50%) scale(0.3) rotate(0deg); }
+            100% { bottom: 35%; transform: translateX(-50%) scale(0.3) rotate(0deg); }
+        }
+
+        /* 掉落後靜止狀態（新增） */
+        .dropped-idle {
+            bottom: 35% !important;
+            transform: translateX(-50%) scale(0.3) !important;
+        }
+
+        /* 搖晃動畫 */
+        .shaking {
+            animation: shakeAnim 0.8s ease-in-out;
+            bottom: 35% !important;
+            transform: translateX(-50%) scale(0.3) !important;
+            transform-origin: bottom center;
+        }
+
+        @keyframes shakeAnim {
+            0% { transform: translateX(-50%) scale(0.3) rotate(0deg); }
+            20% { transform: translateX(-50%) scale(0.3) rotate(-15deg); }
+            40% { transform: translateX(-50%) scale(0.3) rotate(15deg); }
+            60% { transform: translateX(-50%) scale(0.3) rotate(-15deg); }
+            80% { transform: translateX(-50%) scale(0.3) rotate(15deg); }
+            100% { transform: translateX(-50%) scale(0.3) rotate(0deg); }
+        }
+
+        /* 捕捉成功的精靈球狀態 */
+        .caught-ball {
+            bottom: 35% !important;
+            transform: translateX(-50%) scale(0.3) !important;
+            filter: grayscale(0.5) brightness(0.8);
+        }
+
+        /* 捕捉成功時中間按鈕發光 */
+        .caught-ball::after {
+            background: #ffea00 !important;
+            box-shadow: 0 0 10px #ffea00 !important;
+        }
+
+        /* 按鈕容器 */
+        #action-buttons {
+            margin-top: 10px;
+            display: none;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        button {
+            padding: 8px 16px;
+            font-size: 16px;
+            font-weight: bold;
+            border: 2px solid #333;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #FFDE00;
+            color: #333;
+            transition: transform 0.1s;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        /* 載入畫面 */
+        #loading {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 100;
+            flex-direction: column;
+        }
+        .spinner {
+            width: 50px; height: 50px;
+            border: 5px solid #fff;
+            border-top: 5px solid #FF0000;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- 載入中遮罩 -->
+        <div id="loading">
+            <div class="spinner"></div>
+            <div>尋找野生寶可夢中...</div>
+        </div>
+
+        <!-- 寶可夢圖片 -->
+        <img id="pokemon-sprite" src="" alt="Pokemon" style="display: none;">
+        
+        <!-- 精靈球 -->
+        <div id="pokeball" onclick="throwBall()"></div>
+        
+        <!-- 對話方塊 -->
+        <div id="dialog-box">
+            <span id="dialog-text">野生的寶可夢出現了！</span>
+            <div id="action-buttons">
+                <button onclick="runAway()">逃跑</button>
+                <button onclick="startEncounter()">繼續尋找</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const pokemonSprite = document.getElementById('pokemon-sprite');
+        const pokeball = document.getElementById('pokeball');
+        const dialogText = document.getElementById('dialog-text');
+        const actionButtons = document.getElementById('action-buttons');
+        const loading = document.getElementById('loading');
+
+        let currentPokemonName = "";
+        let isGameStateActive = false; // 防止在動畫期間重複點擊
+
+        // 初始化遊戲：尋找寶可夢
+        async function startEncounter() {
+            isGameStateActive = false;
+            loading.style.display = 'flex';
+            actionButtons.style.display = 'none';
+            pokemonSprite.style.display = 'none';
+            
+            // 重置精靈球與寶可夢狀態
+            resetPokeball();
+            pokemonSprite.className = 'floating';
+            
+            try {
+                // 隨機抽取 1~151 號寶可夢 (初代)
+                const randomId = Math.floor(Math.random() * 151) + 1;
+                
+                // 取得寶可夢基本資料 (圖片)
+                const pokeRes = await fetch(`https://pokeapi.co/api/v2/pokemon/${randomId}`);
+                const pokeData = await pokeRes.json();
+                const imageUrl = pokeData.sprites.other['official-artwork'].front_default;
+                
+                // 取得寶可夢中文名稱
+                const speciesRes = await fetch(pokeData.species.url);
+                const speciesData = await speciesRes.json();
+                
+                // 尋找繁體中文 (zh-Hant) 或簡體中文 (zh-Hans)，若無則用英文
+                const zhNameObj = speciesData.names.find(n => n.language.name === 'zh-Hant') || 
+                                  speciesData.names.find(n => n.language.name === 'zh-Hans');
+                currentPokemonName = zhNameObj ? zhNameObj.name : pokeData.name.toUpperCase();
+
+                // 預載圖片
+                const img = new Image();
+                img.src = imageUrl;
+                img.onload = () => {
+                    pokemonSprite.src = imageUrl;
+                    loading.style.display = 'none';
+                    pokemonSprite.style.display = 'block';
+                    dialogText.innerText = `野生的 ${currentPokemonName} 出現了！\n點擊精靈球來捕捉牠！`;
+                    isGameStateActive = true;
+                };
+
+            } catch (error) {
+                console.error("載入寶可夢失敗", error);
+                dialogText.innerText = "連線失敗，請重試！";
+                loading.style.display = 'none';
+                actionButtons.style.display = 'flex';
+            }
+        }
+
+        // 重置精靈球的樣式與位置
+        function resetPokeball() {
+            pokeball.className = '';
+            pokeball.style = ''; // 清除所有 inline 樣式 (bottom, transform)
+            pokeball.style.display = 'block';
+            pokeball.style.opacity = '1';
+        }
+
+        // 玩家點擊精靈球
+        function throwBall() {
+            if (!isGameStateActive) return;
+            isGameStateActive = false; // 鎖定狀態
+            
+            dialogText.innerText = `去吧！精靈球！`;
+            
+            // 1. 丟球動畫
+            pokeball.className = 'throwing';
+            
+            // 監聽丟球動畫結束
+            pokeball.addEventListener('animationend', handleThrowEnd, { once: true });
+        }
+
+        // 丟球動畫結束，處理寶可夢被吸入
+        function handleThrowEnd(e) {
+            if(e.animationName !== 'throwAnim') return;
+
+            // 寶可夢縮小吸入效果
+            pokemonSprite.classList.remove('floating');
+            pokemonSprite.classList.add('absorbed');
+
+            // 球掉落到地上
+            pokeball.className = 'dropping';
+            
+            // 監聽掉落動畫結束後，才開始搖晃
+            pokeball.addEventListener('animationend', (evt) => {
+                if(evt.animationName !== 'dropAnim') return;
+                pokeball.className = 'dropped-idle'; // 保持在地上
+                setTimeout(() => {
+                    startShaking(0); // 開始搖晃判定
+                }, 400); // 稍微停頓再搖
+            }, { once: true });
+        }
+
+        // 處理球搖晃與機率計算
+        function startShaking(shakeCount) {
+            if (shakeCount < 3) {
+                // 進行搖晃，更新文字提示
+                dialogText.innerText = "搖晃中" + "。".repeat(shakeCount + 1);
+                
+                // 強制重置動畫：先套用靜止 class，觸發重繪 (Reflow)，再加入搖晃 class
+                pokeball.className = 'dropped-idle';
+                void pokeball.offsetWidth; 
+                pokeball.className = 'shaking';
+                
+                // 每次搖晃有 80% 機率不掙脫 (可調整難度)
+                const isSuccess = Math.random() < 0.8;
+
+                pokeball.addEventListener('animationend', (e) => {
+                    if(e.animationName !== 'shakeAnim') return;
+                    
+                    pokeball.className = 'dropped-idle'; // 搖完後保持在地上的靜止狀態
+
+                    if (isSuccess) {
+                        // 沒掙脫，停頓一下繼續下一搖
+                        setTimeout(() => startShaking(shakeCount + 1), 600);
+                    } else {
+                        // 掙脫了！稍微停頓再彈出
+                        setTimeout(() => pokemonEscaped(), 200);
+                    }
+                }, { once: true });
+
+            } else {
+                // 搖晃 3 次成功，捕捉判定
+                pokemonCaught();
+            }
+        }
+
+        // 捕捉成功
+        function pokemonCaught() {
+            pokeball.className = 'caught-ball';
+            dialogText.innerText = `太棒了！你抓到 ${currentPokemonName} 了！`;
+            actionButtons.style.display = 'flex';
+        }
+
+        // 寶可夢掙脫
+        function pokemonEscaped() {
+            pokeball.style.opacity = '0'; // 球消失或破裂
+            
+            // 寶可夢重新出現
+            pokemonSprite.classList.remove('absorbed');
+            pokemonSprite.classList.add('floating');
+            
+            dialogText.innerText = `哎呀！${currentPokemonName} 掙脫了！`;
+            
+            // 稍微延遲後讓玩家決定下一步
+            setTimeout(() => {
+                actionButtons.style.display = 'flex';
+                // 將球重置回底部準備下一次丟擲
+                resetPokeball();
+                isGameStateActive = true; 
+            }, 1000);
+        }
+
+        // 逃跑按鈕功能
+        function runAway() {
+            dialogText.innerText = `你平安地逃跑了。`;
+            actionButtons.style.display = 'none';
+            pokemonSprite.style.display = 'none';
+            resetPokeball();
+            pokeball.style.display = 'none'; // 隱藏球
+            
+            setTimeout(() => {
+                startEncounter();
+            }, 1500);
+        }
+
+        // 網頁載入後馬上開始
+        window.onload = startEncounter;
+
+    </script>
+</body>
+</html>
